@@ -429,7 +429,17 @@ public class LawCaseBatchInfoServiceImpl extends ServiceImpl<LawCaseBatchInfoMap
             sftpUtil = new SftpUtil(sftpConfig.getHost(), sftpConfig.getPort(), sftpConfig.getUsername(), sftpConfig.getPassword());
             sftpUtil.connectWithRetry(); // 使用带重试机制的连接方法
 
-            // 步骤1: 获取待签章文件列表
+            // 步骤1: 先将上传文件读取到内存中（避免临时文件被删除后无法读取）
+            byte[] fileData;
+            try {
+                fileData = file.getBytes();
+                log.info("上传文件读取成功，大小：{} 字节", fileData.length);
+            } catch (java.io.IOException e) {
+                log.error("读取上传文件失败：{}", e.getMessage(), e);
+                return Response.fail("上传失败：读取上传文件失败");
+            }
+
+            // 步骤2: 获取待签章文件列表
             List<String> unstampedFileNames = getUnstampedFileNames(sftpUtil, entity);
             if (unstampedFileNames == null || unstampedFileNames.isEmpty()) {
                 log.error("无法获取待签章文件列表，批次ID：{}", dto.getBatchId());
@@ -438,8 +448,8 @@ public class LawCaseBatchInfoServiceImpl extends ServiceImpl<LawCaseBatchInfoMap
 
             log.info("待签章文件列表（共{}个）：{}", unstampedFileNames.size(), unstampedFileNames);
 
-            // 步骤2: 解析上传的签章文件，获取文件列表
-            List<String> sealedFileNames = getZipFileNames(file);
+            // 步骤3: 解析上传的签章文件，获取文件列表（使用内存中的字节数组）
+            List<String> sealedFileNames = getZipFileNames(fileData);
             if (sealedFileNames == null || sealedFileNames.isEmpty()) {
                 log.error("无法解析签章文件，批次ID：{}", dto.getBatchId());
                 return Response.fail("上传失败：无法解析签章文件，请确保上传的是有效的ZIP压缩包");
@@ -464,21 +474,18 @@ public class LawCaseBatchInfoServiceImpl extends ServiceImpl<LawCaseBatchInfoMap
 
             log.info("文件验证通过，签章文件包含所有待签章文件");
 
-            // 步骤4: 上传签章文件（带重试机制）
+            // 步骤4: 上传签章文件（带重试机制，使用内存中的字节数组）
             String originalFilename = file.getOriginalFilename();
             String extension = FileUtil.getExtension(originalFilename);
             String fileName = dto.getBatchId() + (extension.isEmpty() ? "" : "." + extension);
 
-            // 将MultipartFile转换为字节数组
-            byte[] fileData;
             try {
-                fileData = file.getBytes();
-            } catch (java.io.IOException e) {
-                log.error("读取上传文件失败：{}", e.getMessage(), e);
-                return Response.fail("上传失败：读取上传文件失败");
+                sftpUtil.uploadBytesWithRetry(sftpConfig.getSftpReturnPath(), fileName, fileData);
+                log.info("签章文件上传成功：{}", fileName);
+            } catch (Exception e) {
+                log.error("上传签章文件失败：{}", e.getMessage(), e);
+                return Response.fail("上传失败：" + e.getMessage());
             }
-
-            sftpUtil.uploadBytesWithRetry(sftpConfig.getSftpReturnPath(), fileName, fileData);
             log.info("签章文件上传成功：{}", fileName);
 
             // 步骤5: 更新批次信息
@@ -564,21 +571,20 @@ public class LawCaseBatchInfoServiceImpl extends ServiceImpl<LawCaseBatchInfoMap
     }
 
     /**
-     * 从上传的ZIP文件中获取文件名列表
+     * 从上传的ZIP文件字节数组中获取文件名列表
      */
-    private List<String> getZipFileNames(MultipartFile file) throws Exception {
+    private List<String> getZipFileNames(byte[] fileData) throws Exception {
         List<String> fileNames = new ArrayList<>();
-        java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(file.getInputStream());
-
-        java.util.zip.ZipEntry entry;
-        while ((entry = zis.getNextEntry()) != null) {
-            if (!entry.isDirectory()) {
-                fileNames.add(entry.getName());
+        
+        // 使用ArchiveExtractor解析ZIP文件，支持中文文件名
+        List<ArchiveExtractor.ArchiveFileInfo> extractedFiles = ArchiveExtractor.extract(fileData);
+        
+        if (extractedFiles != null) {
+            for (ArchiveExtractor.ArchiveFileInfo fileInfo : extractedFiles) {
+                fileNames.add(fileInfo.getName());
             }
-            zis.closeEntry();
         }
-        zis.close();
-
+        
         return fileNames;
     }
 

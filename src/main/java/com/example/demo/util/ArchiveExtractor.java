@@ -88,6 +88,30 @@ public class ArchiveExtractor {
     }
 
     /**
+     * 从压缩文件字节数组中提取文件信息
+     *
+     * @param fileData 压缩文件的字节数组
+     * @return 提取的文件信息列表
+     */
+    public static List<ArchiveFileInfo> extract(byte[] fileData) {
+        log.info("开始解析压缩文件（字节数组），大小：{} 字节", fileData.length);
+
+        List<ArchiveFileInfo> result = new ArrayList<>();
+
+        try {
+            // 默认按ZIP格式解析
+            result = extractZip(fileData);
+
+            log.info("压缩文件解析完成，共提取 {} 个文件", result.size());
+            return result;
+
+        } catch (Exception e) {
+            log.error("解析压缩文件失败：{}", e.getMessage(), e);
+            return result;
+        }
+    }
+
+    /**
      * 解析 ZIP 文件（使用 Java 内置的 ZipFile，更好的兼容性）
      */
     private static List<ArchiveFileInfo> extractZip(MultipartFile file) {
@@ -98,6 +122,62 @@ public class ArchiveExtractor {
             // 将 MultipartFile 转换为临时文件
             tempFile = java.io.File.createTempFile("zip", ".zip");
             file.transferTo(tempFile);
+
+            // 尝试多种编码，选择最合适的一个
+            // 优先尝试GBK（Windows标准），然后UTF-8（Linux标准），最后GB2312（老版本Windows）
+            String[] encodings = {"GBK", "UTF-8", "GB2312"};
+            List<List<ArchiveFileInfo>> allResults = new ArrayList<>();
+
+            for (String encoding : encodings) {
+                List<ArchiveFileInfo> files = tryExtractZipWithEncoding(tempFile, encoding);
+                if (!files.isEmpty()) {
+                    allResults.add(files);
+                    log.info("使用 {} 编码成功解析 ZIP 文件，共提取 {} 个文件", encoding, files.size());
+                    // 打印前3个文件名用于调试
+                    for (int i = 0; i < Math.min(3, files.size()); i++) {
+                        log.info("  - 示例文件名[{}]：'{}'", i, files.get(i).getName());
+                    }
+                }
+            }
+
+            if (allResults.isEmpty()) {
+                log.error("所有编码尝试均失败，无法解析 ZIP 文件");
+                return result;
+            }
+
+            // 选择最可能正确的编码（优先选择包含中文的结果）
+            result = selectBestResult(allResults, encodings);
+
+            log.info("最终选择解析结果，共提取 {} 个文件", result.size());
+            for (ArchiveFileInfo info : result) {
+                log.info("  - 文件名：'{}'，大小：{} 字节", info.getName(), info.getSize());
+            }
+
+        } catch (Exception e) {
+            log.error("解析 ZIP 文件时发生异常：{}", e.getMessage(), e);
+        } finally {
+            // 删除临时文件
+            if (tempFile != null && tempFile.exists()) {
+                tempFile.delete();
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * 解析 ZIP 文件（从字节数组）
+     */
+    private static List<ArchiveFileInfo> extractZip(byte[] fileData) {
+        List<ArchiveFileInfo> result = new ArrayList<>();
+        java.io.File tempFile = null;
+
+        try {
+            // 将字节数组写入临时文件
+            tempFile = java.io.File.createTempFile("zip", ".zip");
+            java.io.FileOutputStream fos = new java.io.FileOutputStream(tempFile);
+            fos.write(fileData);
+            fos.close();
 
             // 尝试多种编码，选择最合适的一个
             // 优先尝试GBK（Windows标准），然后UTF-8（Linux标准），最后GB2312（老版本Windows）

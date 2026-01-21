@@ -260,6 +260,68 @@ public class SftpUtil {
     }
 
     /**
+     * 上传输入流（带重试机制，直接处理InputStream而不转换为字节数组）
+     *
+     * @param directory 上传目录
+     * @param fileName  文件名
+     * @param inputStream 文件输入流
+     * @param maxRetries 最大重试次数
+     * @param retryInterval 重试间隔（秒）
+     * @throws Exception 上传异常
+     */
+    public void uploadStreamWithRetry(String directory, String fileName, InputStream inputStream, int maxRetries, int retryInterval) throws Exception {
+        int retryCount = 0;
+        Exception lastException = null;
+
+        while (retryCount <= maxRetries) {
+            try {
+                if (retryCount > 0) {
+                    log.info("第 {} 次重试上传文件：{}", retryCount, fileName);
+                }
+
+                channel.cd(directory);
+                channel.put(inputStream, fileName);
+
+                if (retryCount > 0) {
+                    log.info("第 {} 次重试上传成功：{}", retryCount, fileName);
+                } else {
+                    log.info("文件上传成功：{}", fileName);
+                }
+                return;
+
+            } catch (Exception e) {
+                lastException = e;
+                retryCount++;
+
+                if (retryCount <= maxRetries) {
+                    log.warn("文件上传失败（第{}次尝试）：{}，{}秒后重试...", retryCount, e.getMessage(), retryInterval);
+                    try {
+                        Thread.sleep(retryInterval * 1000L);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new Exception("上传被中断", ie);
+                    }
+                }
+            }
+        }
+
+        log.error("文件上传失败，已重试{}次：{}", maxRetries, lastException.getMessage());
+        throw new Exception(String.format("文件上传失败，已重试%d次：%s", maxRetries, lastException.getMessage()), lastException);
+    }
+
+    /**
+     * 上传输入流（带重试机制，使用默认参数）
+     *
+     * @param directory 上传目录
+     * @param fileName  文件名
+     * @param inputStream 文件输入流
+     * @throws Exception 上传异常
+     */
+    public void uploadStreamWithRetry(String directory, String fileName, InputStream inputStream) throws Exception {
+        uploadStreamWithRetry(directory, fileName, inputStream, 3, 5);
+    }
+
+    /**
      * 下载文件
      *
      * @param directory  源目录
