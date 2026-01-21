@@ -1,0 +1,65 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+spring:
+  application:
+    name: sign
+  datasource:
+    url: jdbc:mysql://localhost:3306/cs?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=GMT%2B8&allowMultiQueries=true
+    username: root
+    password: 1812019260
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    type: com.alibaba.druid.pool.DruidDataSource
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 100MB
+      max-request-size: 100MB
+  mail:
+    host: smtp.163.com
+    port: 465
+    username: z1812019260@163.com
+    password: YTgxt9MWRZVAJeef
+    protocol: smtps
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
+            required: true
+          socketFactory:
+            class: javax.net.ssl.SSLSocketFactory
+            fallback: false
+        debug: false
+
+# MyBatis Plus 配置
+mybatis-plus:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.example.sign.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# # 自定义配置
+sign:
+  sftp:
+    host: 192.168.81.128
+    port: 22
+    username: root
+    password: 123456
+    receive-path: /home/ftp/sign_upload/toBeSignFile
+    return-path: /home/ftp/sign_upload/signedFile
+    notice-url: https://example.com/api/notice
+
+  email:
+    enabled: false
+    to: recipient@example.com
+    subject: 签章文件上传通知
+    url: https://example.com/api/notice
+    public-key: AAAAB3NzaC1yc2EAAAADAQABAAACAQDEB1Z8i5oXBBlhA54lOY6issBuPOx9u/nEllH6H7/K34QDBPQMIOMMCh9tp1fqBXNfvfyjhhA4VWP2RWd0A6M8Hv4QrekTZW28typW+LMxkaLcApILA9QSfEmOKSA+52JRggyBRFOnmNk7XPpQj7S4INm6u5cnV3K6V3yLEpCSBOAri8WOg5TxsQ5rMFeH3NSX+/tmQ++upGk/gEmurMLjMJ3C/snaEAEvprGJD6vV2BVxF5wBVOkg5AVpI45empB6Ad5fs/AzhYGpCSb0gfESY0qElIKElHE/Yd/2FfWD+aE6FK+y7vxuj0JjU7u8W962tNvVn7Qy9+uNHVCD5q0DloMchq20aW2xpGScDe++k/YtPJUwqQjmr7yi/r+ElnbWhKRFtKvBBGR8ggmhRKXQNC01odtC5gXYcvNhHQS459dlZ0WGnZ49dVHg8KvYGgI3NvoOKj2Q/+ZPyY+4ZEgpQmCmMguj7IBFU88rH8BVRE+5U+4PqmKOO40O8M6OGq7nHydkvRUaRQotRffyWOy1ek3ws23W8sHJELhbY2SDmgy5shRWtbbPgKOTidqEh2ABqJ/Q63jAbuaasURkuAlP08p0GIbUHVaEV+J32fTVg7WZm83D0WPC4MR7CSbPwokvdn424AvtazLlVEMQPd2ljQNu5xDOuC/es5HKjJn4uQ==
+    private-key: private-key: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
+
